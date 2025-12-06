@@ -59,7 +59,10 @@ pip install -r requirements.txt
    ```
 2. 按照提示，依次点击游戏棋盘的 **左上、右上、右下、左下** 四个角。
 3. 配置文件将自动保存至 `eyes/board_coordinates.txt`。
-![示例](eyes\打点示例.png)
+
+
+![示例](./eyes/打点示例.png)
+
 按完4个点之后按回车，不想打点就按Q退出。完事问你看不看透视选N不看
 
 ### 3. 启动自动化大脑 (God Brain)

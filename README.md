@@ -135,6 +135,4 @@ pip install -r requirements.txt
 
 
 ---
-*Created by small_tailqwq / Powered by Gemini*
-
-> 在用 AI 创造一些有趣的东西
+*Powered by Gemini 3 Pro, debugged by small-tailqwq*

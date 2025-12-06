@@ -120,7 +120,14 @@ def main():
             # 询问是否测试透视变换
             test = input("\n是否测试透视变换? (y/n): ").strip().lower()
             if test == 'y':
-                from jietu import unwarp_board
+                try:
+                    from auto_capture import unwarp_board
+                except ImportError:
+                    # 如果直接运行此脚本，可能需要调整导入路径
+                    import sys
+                    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+                    from auto_capture import unwarp_board
+
                 warped = unwarp_board(picker.img, points)
                 cv2.imshow('校正后的棋盘', warped)
                 cv2.waitKey(0)

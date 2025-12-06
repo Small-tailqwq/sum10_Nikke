@@ -6,10 +6,47 @@ import numpy as np
 from PIL import ImageGrab
 import time
 import os
-from jietu import unwarp_board
 
 # 获取脚本所在目录
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def unwarp_board(img, corners):
+    """
+    对图像进行透视变换校正
+    Args:
+        img: 原始图像
+        corners: 4个角点坐标 [(x,y), (x,y), (x,y), (x,y)] (左上, 右上, 右下, 左下)
+    Returns:
+        校正后的图像
+    """
+    # 确保角点是 float32 类型
+    pts1 = np.array(corners, dtype=np.float32)
+    
+    # 解包四个点
+    (tl, tr, br, bl) = pts1
+    
+    # 计算宽度 (取上下边长的最大值)
+    widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
+    widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
+    maxWidth = max(int(widthA), int(widthB))
+
+    # 计算高度 (取左右边长的最大值)
+    heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
+    heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
+    maxHeight = max(int(heightA), int(heightB))
+
+    # 定义目标点坐标
+    dst = np.array([
+        [0, 0],
+        [maxWidth - 1, 0],
+        [maxWidth - 1, maxHeight - 1],
+        [0, maxHeight - 1]], dtype="float32")
+
+    # 计算透视变换矩阵并应用
+    M = cv2.getPerspectiveTransform(pts1, dst)
+    warped = cv2.warpPerspective(img, M, (maxWidth, maxHeight))
+    return warped
 
 
 def load_coordinates(filename='board_coordinates.txt'):

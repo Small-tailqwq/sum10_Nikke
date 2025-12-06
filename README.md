@@ -1,3 +1,5 @@
+<img src="soline.gif" align="left" height="120" />
+
 # Sum10 Nikke 自动化与分析系统
 
 ## 📖 项目简介

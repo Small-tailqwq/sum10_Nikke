@@ -1,12 +1,29 @@
+# Web框架和服务器
 fastapi
 uvicorn
 websockets
-opencv-python
+flask
+
+# 计算和加速
 numpy
+numba
+psutil
+
+# 图像处理
+opencv-python
 pillow
+
+# 模拟输入
 pyautogui
 pydirectinput
-flask
+
+# 机器学习
 torch
 torchvision
+scikit-learn
+
+# 参数优化 (可选,仅trainer.py需要)
+optuna
+
+# Intel TBB加速 (可选)
 tbb

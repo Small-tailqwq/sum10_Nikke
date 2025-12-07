@@ -149,9 +149,6 @@ web_tool/uploads/
 *.md.bak
 *.bak
 
-# Ignore HTML test outputs
-*.html
-
 # Ignore any other temp files
 *.tmp
 *.temp

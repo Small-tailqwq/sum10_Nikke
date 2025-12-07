@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sum10 快速切图标注工具</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f4f6f9; }
+        .cell-img { width: 64px; height: 64px; image-rendering: pixelated; border: 2px solid #ddd; border-radius: 4px; }
+        .cell-card { cursor: pointer; transition: all 0.2s; background: white; }
+        .cell-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .cell-card.selected { border-color: #0d6efd; background-color: #e7f1ff; transform: scale(1.1); z-index: 10; box-shadow: 0 0 10px rgba(13, 110, 253, 0.5); }
+        .staged-area { border: 2px dashed #adb5bd; padding: 20px; margin-top: 20px; background-color: #ffffff; min-height: 200px; border-radius: 10px; }
+        .keyboard-hint { position: fixed; bottom: 20px; right: 20px; background: rgba(0,0,0,0.8); color: white; padding: 15px; border-radius: 8px; z-index: 1000; font-family: monospace; }
+        .badge-overlay { position: absolute; top: -5px; right: -5px; font-size: 0.8rem; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">Sum10 数据集构建流水线</span>
+            <div class="d-flex align-items-center">
+                <input type="file" id="upload-input" class="form-control form-control-sm me-2" style="width: 250px;" accept="image/*">
+                <button class="btn btn-primary btn-sm" onclick="uploadAndCut()">📸 上传截图并自动切割</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row mb-2">
+            <div class="col d-flex justify-content-between align-items-center">
+                <h5 class="text-secondary">待标记队列 (<span id="unsigned-count">0</span>)</h5>
+                <button class="btn btn-outline-secondary btn-sm" onclick="loadUnsignedImages()">🔄 刷新列表</button>
+            </div>
+        </div>
+
+        <div class="text-center text-muted py-5" id="empty-msg">
+            暂无图片。请上传游戏截图，系统会自动切割成小方块。
+        </div>
+
+        <div id="unsigned-container" class="row g-2 mb-4" style="min-height: 100px;">
+            </div>
+        
+        <div class="staged-area">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="text-primary">✅ 已标记暂存区 (确认无误后提交)</h5>
+                <div>
+                    <button class="btn btn-secondary btn-sm me-2" onclick="clearStaged()">撤销全部</button>
+                    <button class="btn btn-success" onclick="confirmStaged()">💾 提交入库 (<span id="staged-count">0</span>)</button>
+                </div>
+            </div>
+            <div id="staged-container" class="row g-2">
+            </div>
+        </div>
+    </div>
+
+    <div class="keyboard-hint">
+        <div>按键 <strong>1-9</strong> : 标记数字</div>
+        <div>按键 <strong>0 / N</strong> : 标记干扰项 (Noise)</div>
+        <div class="mt-1 text-warning small">标错可点击暂存区卡片修改</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let unsignedImages = [];
+        let stagedImages = []; 
+        let selectedStagedIndex = -1; 
+
+        async function uploadAndCut() {
+            const fileInput = document.getElementById('upload-input');
+            if (!fileInput.files[0]) return alert('请先选择截图文件！');
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = '正在智能切割...';
+            
+            try {
+                const res = await fetch('/api/upload_and_cut', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.success) {
+                    await loadUnsignedImages();
+                    fileInput.value = ''; 
+                } else {
+                    alert('切割失败: ' + (data.error || '未知错误'));
+                }
+            } catch (e) {
+                console.error(e); // 打印真实错误到控制台
+                alert('处理出错，请查看F12控制台');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = originalText;
+            }
+        }
+
+        async function loadUnsignedImages() {
+            const res = await fetch('/api/unsigned_images');
+            unsignedImages = await res.json();
+            renderUnsignedGrid();
+        }
+
+        function renderUnsignedGrid() {
+            const container = document.getElementById('unsigned-container');
+            const emptyMsg = document.getElementById('empty-msg');
+            
+            // 安全清空容器
+            container.innerHTML = ''; 
+            
+            // 更新计数
+            document.getElementById('unsigned-count').innerText = unsignedImages.length;
+            
+            // 控制显示逻辑
+            if (unsignedImages.length === 0) {
+                emptyMsg.style.display = 'block';
+            } else {
+                emptyMsg.style.display = 'none';
+            }
+
+            unsignedImages.slice(0, 18).forEach((img, index) => {
+                const col = document.createElement('div');
+                col.className = 'col-auto';
+                const isTarget = index === 0 && selectedStagedIndex === -1;
+                col.innerHTML = `
+                    <div class="card cell-card ${isTarget ? 'selected' : ''}">
+                        <div class="card-body p-1 text-center">
+                            <img src="${img.data}" class="cell-img">
+                        </div>
+                    </div>
+                `;
+                container.appendChild(col);
+            });
+        }
+
+        function renderStagedGrid() {
+            const container = document.getElementById('staged-container');
+            container.innerHTML = '';
+            document.getElementById('staged-count').innerText = stagedImages.length;
+            
+            stagedImages.forEach((item, index) => {
+                const col = document.createElement('div');
+                col.className = 'col-auto';
+                const isSelected = index === selectedStagedIndex;
+                let badgeClass = item.label === 'noise' ? 'bg-danger' : 'bg-primary';
+                
+                col.innerHTML = `
+                    <div class="card cell-card ${isSelected ? 'selected' : ''}" onclick="selectStaged(${index})">
+                        <div class="card-body p-1 text-center position-relative">
+                            <img src="${item.data}" class="cell-img">
+                            <span class="badge ${badgeClass} badge-overlay">${item.label}</span>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(col);
+            });
+        }
+
+        function selectStaged(index) {
+            selectedStagedIndex = index;
+            renderStagedGrid();
+            renderUnsignedGrid();
+        }
+
+        function handleKey(key) {
+            let label = key;
+            if (key === '0' || key.toLowerCase() === 'n') label = 'noise';
+            
+            if (selectedStagedIndex !== -1) {
+                stagedImages[selectedStagedIndex].label = label;
+                selectedStagedIndex = -1;
+                renderStagedGrid();
+                renderUnsignedGrid();
+            } else {
+                if (unsignedImages.length === 0) return;
+                const currentImg = unsignedImages.shift();
+                stagedImages.push({ ...currentImg, label: label });
+                renderUnsignedGrid();
+                renderStagedGrid();
+            }
+        }
+        
+        function clearStaged() {
+            unsignedImages = [...stagedImages.map(i => ({filename: i.filename, data: i.data})), ...unsignedImages];
+            stagedImages = [];
+            selectedStagedIndex = -1;
+            renderUnsignedGrid();
+            renderStagedGrid();
+        }
+
+        async function confirmStaged() {
+            if (stagedImages.length === 0) return;
+            const btn = event.target;
+            btn.disabled = true;
+            
+            try {
+                const res = await fetch('/api/label_batch', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ items: stagedImages })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    stagedImages = [];
+                    renderStagedGrid();
+                } else {
+                    alert('提交部分失败');
+                }
+            } catch (e) {
+                alert('网络错误');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const key = e.key;
+            if (['1','2','3','4','5','6','7','8','9','0','n','N'].includes(key)) {
+                handleKey(key);
+            }
+            if (key === 'Enter') confirmStaged();
+        });
+
+        loadUnsignedImages();
+    </script>
+</body>
+</html>

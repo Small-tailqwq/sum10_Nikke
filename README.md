@@ -15,6 +15,14 @@
 - **可视化训练平台**：Web 端的样本标注与模型微调工具，方便持续优化识别准确率。
 - **实时监控**：通过 WebSocket 连接的 Web 前端，实时展示计算过程和最优解。
 
+## 🏆 同类型优秀案例
+
+- [entishl/shitup0512](https://github.com/entishl/shitup0512)
+   - 添加了前置逻辑，当棋盘可能满分时才进行演算；更简单的识别方案，不用繁琐定位；自动化刷满分。
+
+- [ZyphrZero/nikke_pysum](https://github.com/ZyphrZero/nikke_pysum)
+   - 添加了一套便于使用的 GUI，优化了单线程运算效率。
+
 ## 📂 目录结构说明
 
 ```

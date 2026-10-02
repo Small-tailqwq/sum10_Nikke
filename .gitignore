@@ -152,3 +152,7 @@ web_tool/uploads/
 # Ignore any other temp files
 *.tmp
 *.temp
+
+# Reproducible solver benchmark runtime caches
+benchmarks/certified/jit_cache/
+benchmarks/certified/module_cache/

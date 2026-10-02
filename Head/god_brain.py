@@ -199,15 +199,15 @@ def _calc_prefix_sum(vals, rows, cols):
             P[r + 1][c + 1] = P[r][c + 1] + row_sum
     return P
 
-@njit(fastmath=True, nogil=True)
+@njit(fastmath=True, nogil=True, cache=True)
 def _get_rect_sum(P, r1, c1, r2, c2):
     return P[r2+1][c2+1] - P[r1][c2+1] - P[r2+1][c1] + P[r1][c1]
 
-@njit(fastmath=True, nogil=True)
+@njit(fastmath=True, nogil=True, cache=True)
 def _get_rect_count(P_count, r1, c1, r2, c2):
     return P_count[r2+1][c2+1] - P_count[r1][c2+1] - P_count[r2+1][c1] + P_count[r1][c1]
 
-@njit(fastmath=True, nogil=True)
+@njit(fastmath=True, nogil=True, cache=True)
 def _count_islands(map_data, rows, cols):
     islands = 0
     for r in range(rows):
@@ -222,7 +222,7 @@ def _count_islands(map_data, rows, cols):
     return islands
 
 # --- V7 神之眼 (残局恐惧版) ---
-@njit(fastmath=True, nogil=True)
+@njit(fastmath=True, nogil=True, cache=True)
 def _evaluate_state(score, map_data, rows, cols, w_island, w_fragment):
     # 1. 基础攻击性
     h = float(score * 2000)
@@ -270,7 +270,7 @@ def _evaluate_state(score, map_data, rows, cols, w_island, w_fragment):
     h += np.random.random() * noise_level
     return h
 
-@njit(fastmath=True, nogil=True)
+@njit(fastmath=True, nogil=True, cache=True)
 def _fast_scan_rects_v6(map_data, vals, rows, cols, active_indices):
     moves = []
     n_active = len(active_indices)
@@ -294,7 +294,7 @@ def _fast_scan_rects_v6(map_data, vals, rows, cols, active_indices):
             moves.append((min_r, min_c, max_r, max_c, count))
     return moves
 
-@njit(fastmath=True, nogil=True)
+@njit(fastmath=True, nogil=True, cache=True)
 def _apply_move_fast(map_data, rect, cols):
     new_map = map_data.copy()
     r1, c1, r2, c2 = rect
@@ -304,85 +304,142 @@ def _apply_move_fast(map_data, rect, cols):
             new_map[base + c] = 0
     return new_map
 
+@njit(fastmath=True, nogil=True, cache=True)
+def _seed_search_rng(seed):
+    # Numba has a separate RNG: seeding NumPy in Python does not seed it.
+    np.random.seed(seed)
+
+
+@njit(fastmath=True, nogil=True, cache=True)
+def _expand_state_fast(map_data, vals, rows, cols, classic, score,
+                       w_island, w_fragment, window_size):
+    """Expand one parent in compiled code, preserving move and RNG order."""
+    active_indices = np.where(map_data == 1)[0].astype(np.int32)
+    raw_moves = _fast_scan_rects_v6(map_data, vals, rows, cols, active_indices)
+    valid_indices = np.empty(len(raw_moves), dtype=np.int32)
+    counts = np.empty(len(raw_moves), dtype=np.int32)
+    n_valid = 0
+    for i in range(len(raw_moves)):
+        count = raw_moves[i][4]
+        if (classic and count == 2) or (not classic and count >= 2):
+            valid_indices[n_valid] = i
+            counts[n_valid] = -count
+            n_valid += 1
+
+    # Python's old count-descending sort was stable. Equal-count moves must
+    # retain their scanner order, including duplicates, to preserve the search.
+    order = np.argsort(counts[:n_valid], kind='mergesort')
+    n_children = min(n_valid, window_size)
+    maps = np.empty((n_children, len(map_data)), dtype=np.int8)
+    rects = np.empty((n_children, 4), dtype=np.int32)
+    scores = np.empty(n_children, dtype=np.int64)
+    h_scores = np.empty(n_children, dtype=np.float64)
+    for i in range(n_children):
+        move = raw_moves[valid_indices[order[i]]]
+        r1, c1, r2, c2, count = move
+        child = _apply_move_fast(map_data, (r1, c1, r2, c2), cols)
+        child_score = score + count
+        h_scores[i] = _evaluate_state(
+            child_score, child, rows, cols, w_island, w_fragment)
+        maps[i] = child
+        rects[i, 0] = r1
+        rects[i, 1] = c1
+        rects[i, 2] = r2
+        rects[i, 3] = c2
+        scores[i] = child_score
+    return maps, rects, scores, h_scores
+
+
 # --- 核心搜索逻辑 (V7 动态算力版) ---
 def _run_core_search_logic(start_map, vals_arr, rows, cols, beam_width, search_mode, start_score, start_path, weights, max_depth=160):
     w_island = weights.get('w_island', 0)
     w_fragment = weights.get('w_fragment', 0)
-    
+
     initial_h = _evaluate_state(start_score, start_map, rows, cols, w_island, w_fragment)
     current_beam = [{'map': start_map, 'path': list(start_path), 'score': start_score, 'h_score': initial_h}]
     best_state_in_run = current_beam[0]
-    
+
     for _ in range(max_depth):
-        # [V7 特性] 动态算力漏斗
         current_max_score = best_state_in_run['score']
         effective_beam_width = beam_width
-        
-        # 残局算力爆发
         if current_max_score > 120:
             effective_beam_width = int(beam_width * 3.0)
         elif current_max_score > 80:
             effective_beam_width = int(beam_width * 1.5)
-            
-        next_candidates = []
-        found_any_move = False
-        
+
+        window_size = 60 if current_max_score < 120 else 100
+        batches = []
+        offsets = []
+        total_candidates = 0
         for state in current_beam:
-            active_indices = np.where(state['map'] == 1)[0].astype(np.int32)
-            if len(active_indices) < 2:
-                if state['score'] > best_state_in_run['score']: best_state_in_run = state
+            if np.count_nonzero(state['map'] == 1) < 2:
+                if state['score'] > best_state_in_run['score']:
+                    best_state_in_run = state
                 continue
-
-            raw_moves = _fast_scan_rects_v6(state['map'], vals_arr, rows, cols, active_indices)
-            if not raw_moves:
-                if state['score'] > best_state_in_run['score']: best_state_in_run = state
+            maps, rects, scores, h_scores = _expand_state_fast(
+                state['map'], vals_arr, rows, cols, search_mode == 'classic',
+                state['score'], w_island, w_fragment, window_size)
+            if len(scores) == 0:
+                if state['score'] > best_state_in_run['score']:
+                    best_state_in_run = state
                 continue
-            
-            valid_moves_for_state = []
-            for m in raw_moves:
-                count = m[4]
-                rule_pass = False
-                if search_mode == 'classic':
-                    if count == 2: rule_pass = True
-                else: 
-                    if count >= 2: rule_pass = True
-                if rule_pass: valid_moves_for_state.append(m)
-            
-            if not valid_moves_for_state:
-                if state['score'] > best_state_in_run['score']: best_state_in_run = state
-                continue
+            batches.append((state, maps, rects, scores, h_scores))
+            total_candidates += len(scores)
+            offsets.append(total_candidates)
 
-            found_any_move = True
-            
-            # 排序 + 截断
-            valid_moves_for_state.sort(key=lambda x: x[4], reverse=True)
-            window_size = 60 if current_max_score < 120 else 100
-            top_moves = valid_moves_for_state[:window_size]
-            
-            for move in top_moves:
-                r1, c1, r2, c2, count = move
-                new_map = _apply_move_fast(state['map'], (r1, c1, r2, c2), cols)
-                new_score = state['score'] + count
-                h = _evaluate_state(new_score, new_map, rows, cols, w_island, w_fragment)
-                new_path = list(state['path'])
-                new_path.append([int(r1), int(c1), int(r2), int(c2)])
-                next_candidates.append({'map': new_map, 'path': new_path, 'score': new_score, 'h_score': h})
+        if not batches:
+            break
 
-        if not found_any_move or not next_candidates: break
-        
-        next_candidates.sort(key=lambda x: x['h_score'], reverse=True)
-        current_beam = next_candidates[:effective_beam_width]
-        
+        # The flat order is the original parent -> move order. A stable sort
+        # keeps ties identical to the original Python list.sort implementation.
+        all_h_scores = np.concatenate([batch[4] for batch in batches])
+        winners = np.argsort(-all_h_scores, kind='stable')[:effective_beam_width]
+        batch_ids = np.searchsorted(offsets, winners, side='right')
+        current_beam = []
+        for flat_index, batch_id in zip(winners, batch_ids):
+            parent, maps, rects, scores, h_scores = batches[batch_id]
+            local_index = flat_index - (offsets[batch_id - 1] if batch_id else 0)
+            # Build paths only for surviving children. Copy the map row so a
+            # survivor/best state never retains a discarded batch allocation.
+            new_path = list(parent['path'])
+            new_path.append(rects[local_index].tolist())
+            current_beam.append({
+                'map': maps[local_index].copy(),
+                'path': new_path,
+                'score': int(scores[local_index]),
+                'h_score': float(h_scores[local_index]),
+            })
+
         if current_beam[0]['score'] > best_state_in_run['score']:
             best_state_in_run = current_beam[0]
-            
+
     return best_state_in_run
 
 # --- V7 九头蛇 (S/L 大法版) ---
 def _solve_process_hydra(args):
     map_list, val_list, rows, cols, beam_width, mode, seed, time_limit, personality = args
+    if mode == 'complete':
+        # Opt-in pure solver; legacy classic/omni/god modes remain unchanged.
+        if __package__:
+            from .certified_solver import solve
+        else:
+            from certified_solver import solve
+        if len(map_list) != rows * cols or len(val_list) != rows * cols:
+            raise ValueError('board shape does not match map/value lengths')
+        if any(m not in (0, 1) for m in map_list):
+            raise ValueError('live mask must contain only 0 or 1')
+        if any(m and (not isinstance(v, (int, np.integer)) or not 0 <= v <= 9)
+               for m, v in zip(map_list, val_list)):
+            raise ValueError('live cells must be digits 0..9 (0 means empty)')
+        board = [[int(val_list[r * cols + c]) if map_list[r * cols + c] else 0
+                  for c in range(cols)] for r in range(rows)]
+        result = solve(board, beam=beam_width, seed=seed, time_limit=time_limit)
+        result.update(worker_id=seed, iterations=max(0, result['attempts'] - 1),
+                      personality=personality)
+        return result
     safe_seed = seed % (2**32 - 1)
     np.random.seed(safe_seed)
+    _seed_search_rng(safe_seed)
     random.seed(safe_seed)
     
     initial_map_arr = np.array(map_list, dtype=np.int8)
@@ -569,7 +626,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 # V7 增加了计算量，默认给 30 秒，如果突破高分会自动延时
                 TIME_LIMIT = 30.0 
-                msg = f"GOD ENGINE V7.1 (Time Traveler + OCR) | {INPUT_METHOD} | S/L Mode Active"
+                msg = (f"COMPLETE SEARCH | {INPUT_METHOD} | exact move scan + unique beam"
+                       if mode == 'complete' else
+                       f"GOD ENGINE V7.1 (Time Traveler + OCR) | {INPUT_METHOD} | S/L Mode Active")
                 await websocket.send_json({"type": "LOG", "msg": msg})
                 
                 loop = asyncio.get_running_loop()
@@ -593,6 +652,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     tasks.append(task)
                 
                 best_score = -1; done_count = 0; best_record = None
+                worker_errors = []
                 
                 for coro in asyncio.as_completed(tasks):
                     try:
@@ -602,8 +662,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         if result['score'] > best_score:
                             best_score = result['score']
                             best_record = result
-                            await websocket.send_json({"type": "BETTER_SOLUTION", "score": result['score'], "path": result['path'], "worker": result['worker_id']})
-                    except Exception as e: print(f"Task Error: {e}")
+                            await websocket.send_json({"type": "BETTER_SOLUTION", "score": result['score'], "path": result['path'], "worker": result['worker_id'],
+                                                       "optimal": result.get('optimal', False), "full_clear": result.get('full_clear', False),
+                                                       "upper_bound": result.get('upper_bound'), "status": result.get('status', 'best_found')})
+                    except Exception as e:
+                        worker_errors.append(str(e))
+                        print(f"Task Error: {e}")
+                        await websocket.send_json({"type": "SOLVER_ERROR", "msg": str(e)})
                 
                 if best_record:
                     full_record = {
@@ -613,7 +678,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     }
                     data_collector.save_record(full_record)
                     
-                await websocket.send_json({"type": "DONE", "msg": "时空演算完毕"})
+                await websocket.send_json({
+                    "type": "DONE", "msg": "时空演算完毕" if best_record is not None else "演算失败，未生成可用结果",
+                    "success": best_record is not None,
+                    "optimal": bool(best_record and best_record.get('optimal', False)),
+                    "full_clear": bool(best_record and best_record.get('full_clear', False)),
+                    "upper_bound": best_record.get('upper_bound') if best_record else None,
+                    "worker_errors": len(worker_errors),
+                })
 
             elif cmd == 'EMERGENCY_EXECUTE':
                 if tasks:

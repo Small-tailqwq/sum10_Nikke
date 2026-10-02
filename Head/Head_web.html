@@ -289,6 +289,7 @@
                     <div id="opt-classic" class="mode-opt" onclick="setMode('classic')">CLASSIC</div>
                     <div id="opt-omni" class="mode-opt" onclick="setMode('omni')">OMNI</div>
                     <div id="opt-god" class="mode-opt selected" onclick="setMode('god')">GOD (HYDRA)</div>
+                    <div id="opt-complete" class="mode-opt" onclick="setMode('complete')" title="Complete legal move generation; heuristic search, optimal only when a proven bound is reached">CLEAR SEARCH</div>
                 </div>
                 <div class="slider-box">
                     <div class="slider-row">
@@ -522,6 +523,9 @@
             else if (data.type === 'OCR_ERROR') {
                 showToast("OCR ERROR", data.msg);
             }
+            else if (data.type === 'SOLVER_ERROR') {
+                showToast("SOLVER ERROR", data.msg);
+            }
             else if (data.type === 'PROGRESS') {
                 document.getElementById('p-bar').style.width = Math.min(95, data.val) + "%";
             }
@@ -537,16 +541,26 @@
                 document.getElementById('ui-rate').innerText = rate + "%";
 
                 // 有解即可允许应急执行
-                if (GameState.execState === 'disabled') setExecState('armed');
+                if (data.path && data.path.length && GameState.execState === 'disabled') setExecState('armed');
             }
             else if (data.type === 'DONE') {
                 document.getElementById('p-bar').style.width = "100%";
                 const btn = document.getElementById('btn-run');
-                btn.innerHTML = "<span>REPLAY SIMULATION</span>";
                 btn.disabled = false;
-                btn.onclick = () => playSolution(GameState.bestSolution);
-                setExecState('hot');
-                showToast("CALCULATION COMPLETE", "Optimal path generated. God Hand standing by.");
+                if (data.success === false || !GameState.bestSolution || !GameState.bestSolution.length) {
+                    btn.innerHTML = "<span>INITIALIZE</span>";
+                    btn.onclick = startSolver;
+                    setExecState('disabled');
+                    showToast(data.success === false ? "CALCULATION FAILED" : "NO CLEARING MOVES",
+                              data.success === false ? data.msg : "No nonempty clearing path was found.");
+                } else {
+                    btn.innerHTML = "<span>REPLAY SIMULATION</span>";
+                    btn.onclick = () => playSolution(GameState.bestSolution);
+                    setExecState('hot');
+                    showToast("CALCULATION COMPLETE", data.optimal === true
+                              ? "Verified upper bound reached. God Hand standing by."
+                              : "Best-found path ready. Optimality is not proven.");
+                }
             }
         }
 
@@ -607,6 +621,7 @@
             const btn = document.getElementById('btn-run');
             btn.innerHTML = "<span>PROCESSING...</span>"; btn.disabled = true;
             setExecState('disabled');
+            GameState.bestSolution = null;
 
             const payload = {
                 cmd: 'START',

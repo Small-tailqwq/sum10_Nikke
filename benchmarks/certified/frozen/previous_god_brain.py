@@ -418,25 +418,6 @@ def _run_core_search_logic(start_map, vals_arr, rows, cols, beam_width, search_m
 # --- V7 九头蛇 (S/L 大法版) ---
 def _solve_process_hydra(args):
     map_list, val_list, rows, cols, beam_width, mode, seed, time_limit, personality = args
-    if mode == 'complete':
-        # Opt-in pure solver; legacy classic/omni/god modes remain unchanged.
-        if __package__:
-            from .certified_solver import solve
-        else:
-            from certified_solver import solve
-        if len(map_list) != rows * cols or len(val_list) != rows * cols:
-            raise ValueError('board shape does not match map/value lengths')
-        if any(m not in (0, 1) for m in map_list):
-            raise ValueError('live mask must contain only 0 or 1')
-        if any(m and (not isinstance(v, (int, np.integer)) or not 0 <= v <= 9)
-               for m, v in zip(map_list, val_list)):
-            raise ValueError('live cells must be digits 0..9 (0 means empty)')
-        board = [[int(val_list[r * cols + c]) if map_list[r * cols + c] else 0
-                  for c in range(cols)] for r in range(rows)]
-        result = solve(board, beam=beam_width, seed=seed, time_limit=time_limit)
-        result.update(worker_id=seed, iterations=max(0, result['attempts'] - 1),
-                      personality=personality)
-        return result
     safe_seed = seed % (2**32 - 1)
     np.random.seed(safe_seed)
     _seed_search_rng(safe_seed)
@@ -626,9 +607,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 # V7 增加了计算量，默认给 30 秒，如果突破高分会自动延时
                 TIME_LIMIT = 30.0 
-                msg = (f"COMPLETE SEARCH | {INPUT_METHOD} | exact move scan + unique beam"
-                       if mode == 'complete' else
-                       f"GOD ENGINE V7.1 (Time Traveler + OCR) | {INPUT_METHOD} | S/L Mode Active")
+                msg = f"GOD ENGINE V7.1 (Time Traveler + OCR) | {INPUT_METHOD} | S/L Mode Active"
                 await websocket.send_json({"type": "LOG", "msg": msg})
                 
                 loop = asyncio.get_running_loop()
@@ -652,7 +631,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     tasks.append(task)
                 
                 best_score = -1; done_count = 0; best_record = None
-                worker_errors = []
                 
                 for coro in asyncio.as_completed(tasks):
                     try:
@@ -662,13 +640,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         if result['score'] > best_score:
                             best_score = result['score']
                             best_record = result
-                            await websocket.send_json({"type": "BETTER_SOLUTION", "score": result['score'], "path": result['path'], "worker": result['worker_id'],
-                                                       "optimal": result.get('optimal', False), "full_clear": result.get('full_clear', False),
-                                                       "upper_bound": result.get('upper_bound'), "status": result.get('status', 'best_found')})
-                    except Exception as e:
-                        worker_errors.append(str(e))
-                        print(f"Task Error: {e}")
-                        await websocket.send_json({"type": "SOLVER_ERROR", "msg": str(e)})
+                            await websocket.send_json({"type": "BETTER_SOLUTION", "score": result['score'], "path": result['path'], "worker": result['worker_id']})
+                    except Exception as e: print(f"Task Error: {e}")
                 
                 if best_record:
                     full_record = {
@@ -678,14 +651,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     }
                     data_collector.save_record(full_record)
                     
-                await websocket.send_json({
-                    "type": "DONE", "msg": "时空演算完毕" if best_record is not None else "演算失败，未生成可用结果",
-                    "success": best_record is not None,
-                    "optimal": bool(best_record and best_record.get('optimal', False)),
-                    "full_clear": bool(best_record and best_record.get('full_clear', False)),
-                    "upper_bound": best_record.get('upper_bound') if best_record else None,
-                    "worker_errors": len(worker_errors),
-                })
+                await websocket.send_json({"type": "DONE", "msg": "时空演算完毕"})
 
             elif cmd == 'EMERGENCY_EXECUTE':
                 if tasks:

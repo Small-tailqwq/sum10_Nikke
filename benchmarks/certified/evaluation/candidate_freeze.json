@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "frozen_at_utc": "2026-10-02T06:58:44.122587+00:00",
+  "candidate_files": [
+    {
+      "path": "benchmarks/certified/fast_solver_finalist.py",
+      "sha256": "0734651940e56bf5bbb7c8c4ea6a1af5492a91a779c1cd60676dbce5221bf6a6",
+      "bytes": 26063
+    },
+    {
+      "path": "benchmarks/certified/fast_solver_cuts.py",
+      "sha256": "8c3247207b472bdf21054b247a313ef578d72508ac8efd71e87a11ee10e10561",
+      "bytes": 20061
+    },
+    {
+      "path": "benchmarks/certified/fast_solver_negative.py",
+      "sha256": "b1fe04ea4fde4afdffa118dd1c130428f67432e790f7717f27398e17c5c1c047",
+      "bytes": 18705
+    },
+    {
+      "path": "benchmarks/certified/frozen/original_god_brain.py",
+      "sha256": "77071a54fa5e4aacd46a1665cb2d06431eab938dc55834ed7b41f317a3409e99",
+      "bytes": 27476
+    },
+    {
+      "path": "benchmarks/certified/frozen/previous_god_brain.py",
+      "sha256": "f25b718081868277b8f754633eeb3237a9ac2ab1314582e68b57061d5ac665c1",
+      "bytes": 29303
+    },
+    {
+      "path": "benchmarks/certified/frozen/v4_god_brain.py",
+      "sha256": "45346037b3520c5918722e6c940fb1cd0985e6fcc6d4109f3921d9d7d2bc06af",
+      "bytes": 21045
+    }
+  ],
+  "configuration": {
+    "candidate": "fast_solver_finalist.py",
+    "frozen_comparators": [
+      "fast_solver_cuts.py",
+      "fast_solver_negative.py",
+      "frozen/original_god_brain.py",
+      "frozen/previous_god_brain.py",
+      "frozen/v4_god_brain.py"
+    ],
+    "beam": 200,
+    "seeds": [
+      17,
+      97
+    ],
+    "mode_original_previous": "god",
+    "candidate_defaults": {
+      "pair_first": false,
+      "weights": [
+        -32,
+        5,
+        0.025,
+        4,
+        14
+      ],
+      "cut_penalty": 1000.0
+    },
+    "primary_protocol": "One base search per board, no repair/restarts; warmed unrelated tiny board; same beam200. Complete validated JSON output timing. Only fullclear gets proven optimum160; failures are bestfound, never timing successes.",
+    "secondary_protocol": "Matched3-second cooperative budgets on predefined first4primary+first4highdigit holdout; actual elapsed and overshoot recorded",
+    "cold_protocol": "Three chosen heldout boards (indices0,8,24) eachseed17, freshprocess freshJITcache, target timer begins before launch; same singlepass settings",
+    "arena_protocol": "Only after frozen candidate; issue1 time-to144 output withbeam500 seeds17,42,97; bestscore fullbudget3s; original,previous,V4,candidate, singleworker. Report nooptimal unlessbound159 verified."
+  },
+  "configuration_file_sha256": "7f7fab8ccec32c52f962c53678a2e31c2917f1f13cc65b2005fb3122820551af",
+  "corpus_holdout_commitments": [
+    {
+      "name": "primary",
+      "count": 24,
+      "boards_sha256": "01f58168824ccaf0109ffcd598fcff177a5722c29dd0d426419dddab12e330b1",
+      "file_sha256": "b0bc1824bfdf1dccb4f02c33f0e109d40d7922f6dd6e2db365a25d63ee76410d",
+      "manifest_file_sha256": "f1a59166456a84a8814ed4a15e1ca64cda43f7d6710e7aa5566258f9811c6a09",
+      "evaluation_filename": "primary_holdout_boards.json"
+    },
+    {
+      "name": "high_digit_extension",
+      "count": 8,
+      "boards_sha256": "a760e5fa255dd84d4c61cf79f2b7b9a029a4aeb15159feab57aeb80ac9dd0d34",
+      "file_sha256": "8016021753dc0c22c9cc811315109b286f0381ca1608b1f89bd052dfb2c9d123",
+      "manifest_file_sha256": "cffa7fa3c3b98cbdd4c58b0ce71485325ebb8fe9a0ffe09d68d965f2d9a87684",
+      "evaluation_filename": "high_digit_extension_holdout_boards.json"
+    }
+  ],
+  "protocol": "Freeze candidate and all settings before first holdout read. No certificate or seed release."
+}

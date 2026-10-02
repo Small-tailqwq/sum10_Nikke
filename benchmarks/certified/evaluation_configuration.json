@@ -1,0 +1,31 @@
+{
+  "candidate": "fast_solver_finalist.py",
+  "frozen_comparators": [
+    "fast_solver_cuts.py",
+    "fast_solver_negative.py",
+    "frozen/original_god_brain.py",
+    "frozen/previous_god_brain.py",
+    "frozen/v4_god_brain.py"
+  ],
+  "beam": 200,
+  "seeds": [
+    17,
+    97
+  ],
+  "mode_original_previous": "god",
+  "candidate_defaults": {
+    "pair_first": false,
+    "weights": [
+      -32,
+      5,
+      0.025,
+      4,
+      14
+    ],
+    "cut_penalty": 1000.0
+  },
+  "primary_protocol": "One base search per board, no repair/restarts; warmed unrelated tiny board; same beam200. Complete validated JSON output timing. Only fullclear gets proven optimum160; failures are bestfound, never timing successes.",
+  "secondary_protocol": "Matched3-second cooperative budgets on predefined first4primary+first4highdigit holdout; actual elapsed and overshoot recorded",
+  "cold_protocol": "Three chosen heldout boards (indices0,8,24) eachseed17, freshprocess freshJITcache, target timer begins before launch; same singlepass settings",
+  "arena_protocol": "Only after frozen candidate; issue1 time-to144 output withbeam500 seeds17,42,97; bestscore fullbudget3s; original,previous,V4,candidate, singleworker. Report nooptimal unlessbound159 verified."
+}

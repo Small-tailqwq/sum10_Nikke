@@ -127,6 +127,16 @@ pip install -r requirements.txt
 - **分辨率**: 建议游戏窗口保持固定分辨率，以免坐标失效。
 
 
+## 🧪 可选 CLEAR SEARCH 与复现实验
+
+新增 `CLEAR SEARCH`（后端 `mode=complete`），保留原 `classic / omni / god` 及默认 God 模式。原 OCR 输出、行列坐标、矩形路径与神之手执行协议继续使用。
+
+- [眼与手的接口兼容性及测试边界](Head/COMPATIBILITY.md)
+- [完整实验平台、冷热计时、结果与限制](benchmarks/CERTIFIED_RESULTS.md)
+- [生成器、清盘见证、保留测试集和原始结果](benchmarks/certified/README.md)
+
+32 个未见的有证可全清盘 × 2 个求解种子：新算法 64/64 全清；旧版及上一轮优化版均 22/64。该结果仅覆盖所述构造分布。公开测试场最高测到 158/160，尚未证明达到其 159 上界。Windows 实机 OCR/鼠标及游戏动作未在本轮运行。
+
 ## ⚖️ 许可证 (License)
 
 本项目仅供学习与技术研究使用。

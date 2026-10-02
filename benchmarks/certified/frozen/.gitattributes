@@ -1,0 +1,2 @@
+# Immutable upstream benchmark snapshots retain their original whitespace.
+*.py -whitespace
